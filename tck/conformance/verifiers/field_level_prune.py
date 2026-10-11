@@ -10,21 +10,26 @@ Exit status 0 means this reading accepts the card's signature, 1 that it refuses
   ``securityRequirements: [{}]`` is read as served (S1-009) and not as its pruned form (S1-010), which is the pair
   that names this reading;
 * RFC 8785 over those bytes;
-* unknown fields are kept as served, and a card carrying the same schema field under both its JSON name and its
-  protobuf name is refused, the reading proposed on a2aproject/A2A#2122.
+* unknown fields participate in that field-level pruning; this is not the separate ``unknown-retain`` reading,
+  which keeps unknown fields verbatim;
+* a card carrying the same schema field under both its JSON name and its protobuf name is refused,
+  the reading proposed on a2aproject/A2A#2122.
 
 Nothing is imported from an SDK or from the corpus generator: the covered bytes are built here from the served JSON,
-and the signature is checked over exactly those bytes with ``cryptography`` (the one package this command needs).
+and the signature is checked over exactly those bytes with ``cryptography`` and ``rfc8785``. JSON numbers use the RFC's binary64 input model.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import math
 import re
 import sys
 
 from pathlib import Path
+
+import rfc8785
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, utils
@@ -58,27 +63,70 @@ def prune(node: object) -> object:
     return node
 
 
-def dual_named(node: object) -> bool:
-    """True when an object carries one schema field under both its JSON name and its protobuf name."""
+# These schema objects scope alias checks. They do not validate a card or define a new reading.
+# Alias checks leave arbitrary extension and Struct member names uninterpreted. Field pruning still applies.
+SCHEMAS = {
+    name.replace(" ", ""): schema
+    for name, schema in json.loads((Path(__file__).resolve().parents[3] / "specification/a2a.json").read_text(encoding="utf-8"))[
+        "definitions"
+    ].items()
+}
+
+
+def dual_named(node: object, schema: dict | None = None) -> bool:
+    """Refuse two spellings of a declared field, preserving arbitrary extension and map names."""
+    if schema is None:
+        schema = SCHEMAS["AgentCard"]
+    if "$ref" in schema:
+        schema = SCHEMAS[schema["$ref"].split(".")[-3]]
     if isinstance(node, dict):
-        keys = set(node)
-        if any(key != snake(key) and snake(key) in keys for key in keys):
+        properties = schema.get("properties", {})
+        names = {snake(name): name for name in properties}
+        if any(name != snake(name) and name in node and snake(name) in node for name in properties):
             return True
-        return any(dual_named(value) for value in node.values())
-    if isinstance(node, list):
-        return any(dual_named(element) for element in node)
+        extra = schema.get("additionalProperties")
+        for name, value in node.items():
+            child = properties.get(name) or properties.get(names.get(name))
+            if child is None and isinstance(extra, dict):
+                child = extra
+            if child is not None and dual_named(value, child):
+                return True
+    elif isinstance(node, list) and "items" in schema:
+        return any(dual_named(value, schema["items"]) for value in node)
     return False
 
 
 def jcs(node: object) -> bytes:
-    """RFC 8785: object members sorted by UTF-16 code unit, no insignificant whitespace."""
-    if isinstance(node, dict):
-        members = sorted(node.items(), key=lambda item: item[0].encode("utf-16-be"))
-        body = ",".join(f"{json.dumps(k, ensure_ascii=False)}:{jcs(v).decode('utf-8')}" for k, v in members)
-        return ("{" + body + "}").encode("utf-8")
-    if isinstance(node, list):
-        return ("[" + ",".join(jcs(v).decode("utf-8") for v in node) + "]").encode("utf-8")
-    return json.dumps(node, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    """RFC 8785 bytes, including ECMAScript binary64 number serialization."""
+    return rfc8785.dumps(node)
+
+
+def unique_members(pairs: list[tuple[str, object]]) -> dict:
+    """Refuse duplicate JSON members before a parser can discard their first values."""
+    result = {}
+    for name, value in pairs:
+        if name in result:
+            raise ValueError("duplicate JSON member")
+        result[name] = value
+    return result
+
+
+def finite_number(raw: str) -> float:
+    """Parse every JSON number as binary64, refusing nonfinite constants and overflow."""
+    number = float(raw)
+    if not math.isfinite(number):
+        raise ValueError("nonfinite JSON number")
+    return number
+
+
+def load_json(raw: str | bytes) -> object:
+    """Parse the JCS input domain without silent member or numeric reinterpretation."""
+    value = json.loads(
+        raw, object_pairs_hook=unique_members, parse_int=finite_number, parse_float=finite_number, parse_constant=finite_number
+    )
+    # This also checks strings and keys that the selected reading later prunes or excludes.
+    jcs(value)
+    return value
 
 
 def b64u(value: str) -> bytes:
@@ -106,17 +154,26 @@ def verifies(jwk: dict, protected: str, payload: bytes, signature: str) -> bool:
         return False
 
 
-def main(card_path: str, jwks_path: str) -> int:
+def verify_card(card_path: str, jwks_path: str) -> int:
     """Return 0 if a signature on the served card verifies over the bytes this reading covers, else 1."""
-    card = json.loads(Path(card_path).read_text(encoding="utf-8"))
+    card = load_json(Path(card_path).read_text(encoding="utf-8"))
+    if not isinstance(card, dict):
+        return 1
     if dual_named(card):
         return 1
     covered = prune({key: value for key, value in card.items() if key != "signatures"})
     payload = jcs(covered)
-    keys = json.loads(Path(jwks_path).read_text(encoding="utf-8"))["keys"]
+    jwks = load_json(Path(jwks_path).read_text(encoding="utf-8"))
+    if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
+        return 1
+    keys = [key for key in jwks["keys"] if isinstance(key, dict)]
     for signature in card.get("signatures") or []:
         try:
-            header = json.loads(b64u(signature["protected"]))
+            if not isinstance(signature, dict):
+                continue
+            header = load_json(b64u(signature["protected"]))
+            if not isinstance(header, dict):
+                continue
         except Exception:
             continue
         if header.get("alg") != "ES256":
@@ -125,6 +182,14 @@ def main(card_path: str, jwks_path: str) -> int:
         if jwk is not None and verifies(jwk, signature["protected"], payload, signature["signature"]):
             return 0
     return 1
+
+
+def main(card_path: str, jwks_path: str) -> int:
+    """Return a refusal for invalid inputs while keeping the verifier command's 0/1 contract."""
+    try:
+        return verify_card(card_path, jwks_path)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return 1
 
 
 if __name__ == "__main__":

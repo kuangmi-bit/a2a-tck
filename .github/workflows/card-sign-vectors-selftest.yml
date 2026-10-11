@@ -39,6 +39,6 @@ jobs:
     with:
       tck-repository: ${{ github.repository }}
       tck-ref: ${{ github.sha }}
-      setup: python -m pip install "cryptography==50.0.2"
+      setup: python -m pip install "cryptography==50.0.2" "rfc8785==0.1.4"
       verifier: python tck/conformance/verifiers/field_level_prune.py {card} {jwks}
       require: field-level-prune
