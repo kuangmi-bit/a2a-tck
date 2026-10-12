@@ -1,0 +1,25 @@
+# a5-replay - per-case output
+# input: conformance-vectors/a2a-jcs-v01/a5-number-serialization/ as published in
+#        a2aproject/a2a-tck pull/228 head 324c53250, copied verbatim into ./vectors/
+# reader: check.js in this directory (recursive key sort + ES6 Number::toString)
+# cases=19 agree=16 mismatch=0 skipped=3 spelling_changed=6
+
+A5-001.json  AGREE  source_spelling=["1e-06"]  canonical_spelling=["0.000001"]  SPELLING-CHANGED  got=7b22746f6c6572616e6365223a302e3030303030317d  expected=7b22746f6c6572616e6365223a302e3030303030317d
+A5-002.json  AGREE  source_spelling=["1e+21"]  canonical_spelling=["1e+21"]  spelling-stable  got=7b22626967223a31652b32317d  expected=7b22626967223a31652b32317d
+A5-003.json  AGREE  source_spelling=["42"]  canonical_spelling=["42"]  spelling-stable  got=7b226e223a34327d  expected=7b226e223a34327d
+A5-004.json  AGREE  source_spelling=["-17"]  canonical_spelling=["-17"]  spelling-stable  got=7b226e223a2d31377d  expected=7b226e223a2d31377d
+A5-005.json  AGREE  source_spelling=["0"]  canonical_spelling=["0"]  spelling-stable  got=7b226e223a307d  expected=7b226e223a307d
+A5-006.json  AGREE  source_spelling=["-0.0"]  canonical_spelling=["0"]  SPELLING-CHANGED  got=7b226e223a307d  expected=7b226e223a307d
+A5-007.json  AGREE  source_spelling=["0.1"]  canonical_spelling=["0.1"]  spelling-stable  got=7b226e223a302e317d  expected=7b226e223a302e317d
+A5-008.json  AGREE  source_spelling=["3.14159"]  canonical_spelling=["3.14159"]  spelling-stable  got=7b226e223a332e31343135397d  expected=7b226e223a332e31343135397d
+A5-009.json  AGREE  source_spelling=["9007199254740991"]  canonical_spelling=["9007199254740991"]  spelling-stable  got=7b226e223a393030373139393235343734303939317d  expected=7b226e223a393030373139393235343734303939317d
+A5-010.json  AGREE  source_spelling=["-123.456"]  canonical_spelling=["-123.456"]  spelling-stable  got=7b226e223a2d3132332e3435367d  expected=7b226e223a2d3132332e3435367d
+A5-011.json  AGREE  source_spelling=["1e-07"]  canonical_spelling=["1e-7"]  SPELLING-CHANGED  got=7b226e223a31652d377d  expected=7b226e223a31652d377d
+A5-012.json  AGREE  source_spelling=["1e+20"]  canonical_spelling=["100000000000000000000"]  SPELLING-CHANGED  got=7b226e223a3130303030303030303030303030303030303030307d  expected=7b226e223a3130303030303030303030303030303030303030307d
+A5-013.json  AGREE  source_spelling=["0.30000000000000004"]  canonical_spelling=["0.30000000000000004"]  spelling-stable  got=7b226e223a302e33303030303030303030303030303030347d  expected=7b226e223a302e33303030303030303030303030303030347d
+A5-014.json  AGREE  source_spelling=["100"]  canonical_spelling=["100"]  spelling-stable  got=7b226e223a3130307d  expected=7b226e223a3130307d
+A5-015.json  AGREE  source_spelling=["10.0","1.0"]  canonical_spelling=["10","1"]  SPELLING-CHANGED  got=7b226578705f7570706572223a31302c22747261696c696e675f7a65726f223a317d  expected=7b226578705f7570706572223a31302c22747261696c696e675f7a65726f223a317d
+A5-019.json  AGREE  source_spelling=["-0"]  canonical_spelling=["0"]  SPELLING-CHANGED  got=7b226e223a307d  expected=7b226e223a307d
+A5-REJECT-016.json,SKIP,no canonical_utf8_hex (refusal-shaped, disposition=MUST-REJECT)
+A5-REJECT-017.json,SKIP,no canonical_utf8_hex (refusal-shaped, disposition=MUST-REJECT)
+A5-REJECT-018.json,SKIP,no canonical_utf8_hex (refusal-shaped, disposition=MUST-REJECT)
