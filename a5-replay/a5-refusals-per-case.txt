@@ -1,0 +1,21 @@
+# a5-replay - refusal side, per-case output
+# input: the MUST-REJECT vectors of conformance-vectors/a2a-jcs-v01/a5-number-serialization/
+#        as published in a2aproject/a2a-tck pull/228 head 324c53250, copied verbatim into ./vectors/
+# reader: refusals.js in this directory (strict RFC 8259 scan + the 3.2.2.3 finite guard)
+#         declared refusal: Refusal, cause=non_json_number_token | non_finite_number
+# outcomes: pass = refused for the stated cause; accepted = returned bytes; errored = other
+# match rule: cause is non_json_number_token AND the offending token occurs in the vector input_raw
+# cases=3 refused_for_stated_cause=3 accepted=0 errored=0
+
+A5-REJECT-016  pass      cause=non_json_number_token token="NaN" clause=RFC8785-3.2.2.3 match=yes stated="NaN is not a valid RFC 8259 JSON number and has no ECMAScript Number::toString representation as"
+A5-REJECT-017  pass      cause=non_json_number_token token="Infinity" clause=RFC8785-3.2.2.3 match=yes stated="Infinity is the positive-magnitude sibling of A5-REJECT-016: not valid JSON, no canonical repres"
+A5-REJECT-018  pass      cause=non_json_number_token token="-Infinity" clause=RFC8785-3.2.2.3 match=yes stated="Negative infinity completes the set: same defect as A5-REJECT-017 with the sign flipped, confirm"
+
+# controls (non-vacuity): the reader refuses the named defect, not numbers in general
+CONTROL finite-number-in-same-position  {"n": 1.0}  accepted  bytes=7b226e223a317d
+CONTROL number-as-string             {"n": "NaN"}  accepted  bytes=7b226e223a224e614e227d
+CONTROL exponent-boundary            {"n": 1e21}  accepted  bytes=7b226e223a31652b32317d
+
+# the value layer, reached only by a lenient parser (this reader is not one)
+VALUE-LAYER non-finite value passed to the canonicalizer: refused  cause=non_finite_number
+VALUE-LAYER platform serializer on the same value:          JSON.stringify({n: NaN}) -> {"n":null}
